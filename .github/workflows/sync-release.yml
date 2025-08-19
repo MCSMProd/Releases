@@ -1,0 +1,137 @@
+name: Sync Release from Target Repo
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'  # 每5分钟执行一次
+  workflow_dispatch:
+
+permissions:
+  contents: write  # 允许提交与推送 tag
+
+env:
+  TARGET_REPO: MCSManager/MCSManager  # TODO: 替换为目标仓库（例如: myorg/myrepo）
+
+jobs:
+  sync-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout current repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 需要推送 tag
+
+      - name: Ensure jq available
+        run: |
+          if ! command -v jq >/dev/null 2>&1; then
+            sudo apt-get update && sudo apt-get install -y jq
+          fi
+
+      - name: Set up Git
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+      - name: Get latest release info
+        id: get_release
+        env:
+          TARGET_REPO: ${{ env.TARGET_REPO }}
+        run: |
+          RELEASE_INFO="$(curl -s "https://api.github.com/repos/${TARGET_REPO}/releases/latest")"
+          TAG="$(echo "$RELEASE_INFO" | jq -r '.tag_name')"
+          ID="$(echo "$RELEASE_INFO" | jq -r '.id')"
+          echo "Latest tag: $TAG (id: $ID)"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "release_info=$RELEASE_INFO" >> $GITHUB_OUTPUT
+
+      - name: Check if already processed
+        id: check_tag
+        run: |
+          LAST_TAG="$(cat .last_release_tag 2>/dev/null || echo "none")"
+          CUR_TAG="${{ steps.get_release.outputs.tag }}"
+          echo "Last processed: $LAST_TAG"
+          if [ "$LAST_TAG" = "$CUR_TAG" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Exit when no update
+        if: steps.check_tag.outputs.skip == 'true'
+        run: echo "No new release. Exit."
+
+      - name: Clean repo except .git, .github and LICENSE
+        if: steps.check_tag.outputs.skip == 'false'
+        shell: bash
+        run: |
+          shopt -s dotglob nullglob
+          for path in ./*; do
+            base="$(basename "$path")"
+            if [ "$base" = ".git" ] || [ "$base" = ".github" ] || [ "$base" = "LICENSE" ]; then
+              echo "Keep: $path"
+              continue
+            fi
+            echo "Remove: $path"
+            rm -rf "$path"
+          done
+
+      - name: Download release assets to temp dir
+        if: steps.check_tag.outputs.skip == 'false'
+        env:
+          RELEASE_INFO: ${{ steps.get_release.outputs.release_info }}
+        run: |
+          mkdir -p assets_tmp
+          COUNT="$(echo "$RELEASE_INFO" | jq '.assets | length')"
+          echo "Assets count: $COUNT"
+          if [ "$COUNT" -gt 0 ]; then
+            echo "$RELEASE_INFO" | jq -r '.assets[] | @base64' | while read -r row; do
+              _jq() { echo "$row" | base64 --decode | jq -r "$1"; }
+              NAME="$(_jq '.name')"
+              URL="$(_jq '.browser_download_url')"
+              echo "Downloading: $NAME"
+              curl -L "$URL" -o "assets_tmp/$NAME"
+            done
+          else
+            echo "No assets in this release. Proceeding without downloads."
+          fi
+
+      - name: Move assets into repo root
+        if: steps.check_tag.outputs.skip == 'false'
+        run: |
+          shopt -s dotglob nullglob
+          if compgen -G "assets_tmp/*" > /dev/null; then
+            mv assets_tmp/* .
+          fi
+
+      - name: Remove temp dir
+        if: steps.check_tag.outputs.skip == 'false'
+        run: rm -rf assets_tmp
+
+      - name: Save processed release tag
+        if: steps.check_tag.outputs.skip == 'false'
+        run: echo "${{ steps.get_release.outputs.tag }}" > .last_release_tag
+
+      - name: Commit changes
+        if: steps.check_tag.outputs.skip == 'false'
+        run: |
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "Sync release ${{ steps.get_release.outputs.tag }}"
+          fi
+
+      - name: Tag and push
+        if: steps.check_tag.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.get_release.outputs.tag }}
+        run: |
+          # 创建或更新本地 tag
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            git tag -f "$TAG"
+          else
+            git tag "$TAG"
+          fi
+          # 推送提交与 tag
+          git push origin HEAD
+          git push origin --force "$TAG"

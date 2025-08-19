@@ -42,7 +42,6 @@ jobs:
           ID="$(echo "$RELEASE_INFO" | jq -r '.id')"
           echo "Latest tag: $TAG (id: $ID)"
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "release_info=$RELEASE_INFO" >> $GITHUB_OUTPUT
 
       - name: Check if already processed
         id: check_tag
@@ -77,9 +76,8 @@ jobs:
 
       - name: Download release assets to temp dir
         if: steps.check_tag.outputs.skip == 'false'
-        env:
-          RELEASE_INFO: ${{ steps.get_release.outputs.release_info }}
         run: |
+          RELEASE_INFO="$(curl -s "https://api.github.com/repos/${TARGET_REPO}/releases/latest")"
           mkdir -p assets_tmp
           COUNT="$(echo "$RELEASE_INFO" | jq '.assets | length')"
           echo "Assets count: $COUNT"

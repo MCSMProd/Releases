@@ -73,6 +73,12 @@ jobs:
             echo "Remove: $path"
             rm -rf "$path"
           done
+      
+      - name: Install Git LFS
+        if: steps.check_tag.outputs.skip == 'false'
+        run: |
+          sudo apt-get update && sudo apt-get install -y git-lfs
+          git lfs install
 
       - name: Download release assets to temp dir
         if: steps.check_tag.outputs.skip == 'false'
@@ -108,6 +114,25 @@ jobs:
       - name: Save processed release tag
         if: steps.check_tag.outputs.skip == 'false'
         run: echo "${{ steps.get_release.outputs.tag }}" > .last_release_tag
+      
+      - name: Detect and track large files with Git LFS
+        if: steps.check_tag.outputs.skip == 'false'
+        run: |
+          MAX_SIZE=$((50 * 1024 * 1024))
+          LARGE_FILES=$(find . -type f ! -path "./.git/*" ! -path "./.github/*" -size +"${MAX_SIZE}c")
+
+          echo "" > .gitattributes
+          
+          if [ -n "$LARGE_FILES" ]; then
+            echo "以下文件超过 50MB，使用 Git LFS 追踪："
+            echo "$LARGE_FILES"
+            echo "$LARGE_FILES" | while read -r file; do
+              git lfs track "$file"
+            done
+            git add .gitattributes
+          else
+            echo "没有文件超过 50MB，无需 LFS"
+          fi
 
       - name: Commit changes
         if: steps.check_tag.outputs.skip == 'false'
@@ -124,12 +149,10 @@ jobs:
         env:
           TAG: ${{ steps.get_release.outputs.tag }}
         run: |
-          # 创建或更新本地 tag
           if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
             git tag -f "$TAG"
           else
             git tag "$TAG"
           fi
-          # 推送提交与 tag
           git push origin HEAD
           git push origin --force "$TAG"

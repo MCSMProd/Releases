@@ -1,15 +1,13 @@
 name: Sync Release from Target Repo
 
 on:
-  schedule:
-    - cron: '*/5 * * * *'  # 每5分钟执行一次
   workflow_dispatch:
 
 permissions:
-  contents: write  # 允许提交与推送 tag
+  contents: write # 允许提交与推送 tag
 
 env:
-  TARGET_REPO: MCSManager/MCSManager  # TODO: 替换为目标仓库（例如: myorg/myrepo）
+  TARGET_REPO: MCSManager/MCSManager # TODO: 替换为目标仓库（例如: myorg/myrepo）
 
 jobs:
   sync-release:
@@ -19,7 +17,7 @@ jobs:
       - name: Checkout current repo
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 需要推送 tag
+          fetch-depth: 0 # 需要推送 tag
 
       - name: Ensure jq available
         run: |
@@ -73,7 +71,7 @@ jobs:
             echo "Remove: $path"
             rm -rf "$path"
           done
-      
+
       - name: Install Git LFS
         if: steps.check_tag.outputs.skip == 'false'
         run: |
@@ -114,7 +112,7 @@ jobs:
       - name: Save processed release tag
         if: steps.check_tag.outputs.skip == 'false'
         run: echo "${{ steps.get_release.outputs.tag }}" > .last_release_tag
-      
+
       - name: Detect and track large files with Git LFS
         if: steps.check_tag.outputs.skip == 'false'
         run: |
@@ -122,7 +120,7 @@ jobs:
           LARGE_FILES=$(find . -type f ! -path "./.git/*" ! -path "./.github/*" -size +"${MAX_SIZE}c")
 
           echo "" > .gitattributes
-          
+
           if [ -n "$LARGE_FILES" ]; then
             echo "以下文件超过 50MB，使用 Git LFS 追踪："
             echo "$LARGE_FILES"

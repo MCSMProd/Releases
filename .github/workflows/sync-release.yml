@@ -10,7 +10,8 @@ env:
   TARGET_REPO: MCSManager/MCSManager # TODO: 替换为目标仓库（例如: myorg/myrepo）
   NODE_VERSION: 20
   REGISTRY_URL: https://registry.npmjs.org
-  TEMP_DIR: ./temp-pkg
+  TEMP_DIR_LINUX: ./temp-pkg-linux
+  TEMP_DIR_WINDOWS: ./temp-pkg-windows
 
 jobs:
   sync-release:
@@ -176,26 +177,50 @@ jobs:
           git push origin HEAD
           git push origin --force "$TAG"
 
-      - name: Prepare package
+      - name: Prepare linux dist package
         if: steps.check_tag.outputs.skip == 'false'
         env:
           TAG: ${{ steps.get_release.outputs.tag }}
         run: |
-          mkdir -p $TEMP_DIR
-          cp -r assets_tmp/* $TEMP_DIR/
+          mkdir -p $TEMP_DIR_LINUX
+          cp -r assets_tmp/mcsmanager_linux_release.tar.gz $TEMP_DIR_LINUX/
 
-          cat > $TEMP_DIR/package.json <<EOF
+          cat > $TEMP_DIR_LINUX/package.json <<EOF
           {
-            "name": "mcsmanager-resources",
+            "name": "mcsm-dist-linux",
             "version": "$TAG",
-            "description": "MCSManager Resources",
+            "description": "MCSManager Linux Resources",
             "license": "Apache-2.0"
           }
           EOF
 
-      - name: Publish to npm
+      - name: Publish linux dist to npm
         if: steps.check_tag.outputs.skip == 'false'
         run: npm publish
-        working-directory: ${{ env.TEMP_DIR }}
+        working-directory: ${{ env.TEMP_DIR_LINUX }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Prepare windows dist package
+        if: steps.check_tag.outputs.skip == 'false'
+        env:
+          TAG: ${{ steps.get_release.outputs.tag }}
+        run: |
+          mkdir -p $TEMP_DIR_WINDOWS
+          cp -r assets_tmp/mcsmanager_windows_release.zip $TEMP_DIR_WINDOWS/
+
+          cat > $TEMP_DIR_WINDOWS/package.json <<EOF
+          {
+            "name": "mcsm-dist-windows",
+            "version": "$TAG",
+            "description": "MCSManager Windows Resources",
+            "license": "Apache-2.0"
+          }
+          EOF
+
+      - name: Publish windows dist to npm
+        if: steps.check_tag.outputs.skip == 'false'
+        run: npm publish
+        working-directory: ${{ env.TEMP_DIR_WINDOWS }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

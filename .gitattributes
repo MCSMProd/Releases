@@ -1,2 +1,4 @@
 mcsmanager_windows_release.zip filter=lfs diff=lfs merge=lfs -text
 mcsmanager_linux_release.tar.gz filter=lfs diff=lfs merge=lfs -text
+assets_tmp/mcsmanager_windows_release.zip filter=lfs diff=lfs merge=lfs -text
+assets_tmp/mcsmanager_linux_release.tar.gz filter=lfs diff=lfs merge=lfs -text
